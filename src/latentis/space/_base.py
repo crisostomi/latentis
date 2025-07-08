@@ -191,10 +191,11 @@ class Space(SerializableMixin):
             **kwargs,
         )
 
-    def to(self, device: Union[str, torch.device]) -> "Space":
+    def to(self, device: Union[str, torch.device], dtype=None) -> "Space":
+        vector_source = self._vector_source.to(device, dtype) if dtype else self._vector_source.to(device)
         return Space.like(
             space=self,
-            vector_source=self._vector_source.to(device),
+            vector_source=vector_source
         )
 
     def size(self) -> torch.Size:

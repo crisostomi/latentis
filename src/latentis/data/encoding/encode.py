@@ -144,6 +144,7 @@ class EncodeTask(Task):
         pooler: Optional[nn.Module] = None,
         target_path: Optional[str] = None,
         write_every: int = 5,
+        only_first_N_samples: Optional[int] = None,
     ):
         super().__init__()
         if split not in dataset_view.hf_dataset:
@@ -163,6 +164,7 @@ class EncodeTask(Task):
         self.pooler = pooler or IdentityPooling(output_dim=self.model.output_dim)
         self.target_path = target_path
         self.write_every: int = write_every
+        self.only_first_N_samples = only_first_N_samples
 
     def metadata(self):
         return {
@@ -209,6 +211,11 @@ class EncodeTask(Task):
                 "pooler": self.pooler.__class__.__name__,
             },
         )
+
+        if self.only_first_N_samples is not None:
+            split_data = split_data.select(
+                range(self.only_first_N_samples)
+            )
 
         loader = DataLoader(
             split_data,

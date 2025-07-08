@@ -133,7 +133,11 @@ dev-dependencies = [
     "mkdocs",
     "mkdocs-material",
     "mike",
+    "latentis",
 ]
+
+[tool.uv.sources]
+latentis = { workspace = true }
 
 [project]
 name = "latentis"

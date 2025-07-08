@@ -127,8 +127,8 @@ class VectorSource(metaclass=VectorSourceMeta):
         sizes[-1] += len(self) - sum(sizes)
         return [self.__class__(self[i : i + size]) for i, size in enumerate(sizes)]
 
-    def to(self, device: Union[str, torch.device]) -> VectorSource:
-        return TensorSource(vectors=self.as_tensor(device=device), keys=self.keys)
+    def to(self, device: Union[str, torch.device], dtype=None) -> VectorSource:
+        return TensorSource(vectors=self.as_tensor(device=device), keys=self.keys, dtype=dtype)
 
     @abstractmethod
     def save_to_disk(self, target_path: Path):
