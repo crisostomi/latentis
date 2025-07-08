@@ -91,14 +91,14 @@ class Translator(Estimator):
 
         return dict(x=x)
 
-    # def inverse_transform(self, x: torch.Tensor, y: torch.Tensor = None) -> torch.Tensor:
-    #     # assert x is None, "The inverse transform should be applied on the target space (y)"
-    #     assert self._fitted, "The transform should be fitted before being applied."
+    def inverse_transform(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        assert x is None, "The inverse transform should be applied on the target space (y)"
+        assert self._fitted, "The transform should be fitted before being applied."
 
-    #     y = self.y_transform.transform(y)
-    #     y = self.aligner.inverse_transform(y)
+        y = self.y_transform.transform(y)
+        y = self.aligner.inverse_transform(x=None, y=y)
 
-    #     return self.x_transform.inverse_transform(y), y
+        return self.x_transform.inverse_transform(y)
 
 
 class MatrixAligner(Estimator):
@@ -133,7 +133,11 @@ class MatrixAligner(Estimator):
     def inverse_transform(
         self, x: torch.Tensor, y: torch.Tensor = None
     ) -> torch.Tensor:
-        raise NotImplementedError
+        # TODO: check if this is correct 
+        # this is only true for orthogonal transformations
+        y = y @ self.get_state("matrix").T
+
+        return y
 
 
 class SGDAffineAligner(Estimator):
