@@ -90,15 +90,82 @@ class Translator(Estimator):
         x = self.y_transform.inverse_transform(x=x)
 
         return dict(x=x)
+    
 
-    def inverse_transform(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-        assert x is None, "The inverse transform should be applied on the target space (y)"
-        assert self._fitted, "The transform should be fitted before being applied."
+    def inverse_transform(
+        self,
+        x: torch.Tensor,          # must be None – kept only for API symmetry
+        y: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Map vectors from the *target* space (y) back into the *source* space (x).
 
+        Parameters
+        ----------
+        x : torch.Tensor
+            Must be None; present only for interface symmetry.
+        y : torch.Tensor
+            Batch of vectors expressed in the target space.
+
+        Returns
+        -------
+        torch.Tensor
+            The same batch expressed in the source space, with the exact
+            dimensionality the original `x` vectors had at fit time.
+        """
+        assert x is None, "Call inverse_transform(x=None, y=<tensor>)."
+        assert self._fitted, "Fit the translator before calling inverse_transform."
+
+        # 1 · re-apply the target-side preprocessing
         y = self.y_transform.transform(y)
-        y = self.aligner.inverse_transform(x=None, y=y)
 
-        return self.x_transform.inverse_transform(y)
+        # 2 · pad to the common dimensionality, if a DimMatcher was used
+        if self.dim_matcher is not None:
+            (y,) = self.dim_matcher.transform(y=y)     # returns a 1-tuple
+
+        # 3 · invert the learned alignment
+        x_pad = self.aligner.inverse_transform(x=None, y=y)
+
+        # 4 · strip the padding that was added in step 2
+        if self.dim_matcher is not None:
+            x_pad = self.dim_matcher.inverse_transform(x=x_pad)
+
+        # 5 · undo the preprocessing that was done on the x-side
+        x_orig = self.x_transform.inverse_transform(x_pad)
+
+        return x_orig
+
+
+
+    # def inverse_transform(           # map “target-space” → “source-space”
+    #     self,
+    #     x: torch.Tensor,             # must be None – kept for API symmetry
+    #     y: torch.Tensor,
+    # ) -> torch.Tensor:
+    #     assert x is None, (
+    #         "Call inverse_transform(x=None, y=targets). "
+    #         "The inverse transform acts on the *target* space only."
+    #     )
+    #     assert self._fitted, "Fit the translator before using it."
+
+    #     # ── 1. replicate the exact preprocessing applied at fit time ──────────
+    #     y = self.y_transform.transform(y)                 # standard-scale
+
+    #     # If dimensions were matched (e.g. ZeroPadding), pad y *before* the aligner
+    #     if self.dim_matcher is not None:
+    #         y = self.dim_matcher.transform(x=None, y=y)[0]
+
+    #     # ── 2. invert the learned alignment ───────────────────────────────────
+    #     y = self.aligner.inverse_transform(x=None, y=y)
+
+    #     # ── 3. remove the extra dims that were added by the DimMatcher ───────
+    #     if self.dim_matcher is not None:
+    #         y  = self.dim_matcher.inverse_transform(x=None, y=y)[0]
+
+    #     # ── 4. restore the original scaling of the *source* space ────────────
+    #     y = self.x_transform.inverse_transform(y)
+
+    #     return y
 
 
 class MatrixAligner(Estimator):
