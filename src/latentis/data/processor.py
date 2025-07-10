@@ -432,7 +432,7 @@ ImageNet = DataProcessor(
 )
 
 ImageNetText = DataProcessor(
-    dataset_name="imagene_text",
+    dataset_name="imagenet_text",
     name="process_imagenet_text",
     flows=(
         Flow(outputs=["dataset_view", "data"])
@@ -457,6 +457,52 @@ ImageNetText = DataProcessor(
         ),
     },
 )
+
+
+PokemonBLIPText = DataProcessor(
+    dataset_name="pokemon_blip_captions_text",
+    name="process_pokemon_blip_captions_text",
+    flows=(
+        Flow(outputs=["dataset_view", "data"])
+        .add(block="load_dataset", outputs="data")
+        .add(block="to_view", inputs="data", outputs="dataset_view")
+    ),
+    blocks={
+        "load_dataset": actions.LoadHFDataset(path="reach-vb/pokemon-blip-captions"),
+        "to_view": actions.ToHFView(
+            name="pokemon_blip_view_text",
+            id_column="sample_id",  # assuming or generating unique ID
+            features=[
+                Feature(
+                    name="text",
+                    data_type=DataType.TEXT,
+                    properties={FeatureProperty.LANGUAGE: "en"}
+                ),
+            ],
+        ),
+    },
+)
+
+PokemonBLIPImage = DataProcessor(
+    dataset_name="pokemon_blip_captions_image",
+    name="process_pokemon_blip_captions_image",
+    flows=(
+        Flow(outputs=["dataset_view", "data"])
+        .add(block="load_dataset", outputs="data")
+        .add(block="to_view", inputs="data", outputs="dataset_view")
+    ),
+    blocks={
+        "load_dataset": actions.LoadHFDataset(path="reach-vb/pokemon-blip-captions"),
+        "to_view": actions.ToHFView(
+            name="pokemon_blip_view_image",
+            id_column="sample_id",  # assuming or generating unique ID
+            features=[
+                Feature(name="image", data_type=DataType.IMAGE),
+            ],
+        ),
+    },
+)
+
 
 if __name__ == "__main__":
     data: DatasetView = IMDB.build().run()["dataset_view"]
