@@ -235,6 +235,9 @@ class EncodeTask(Task):
         ):
             raw_encoding = model.encode(batch.to(self.device))
 
+            if isinstance(raw_encoding['x'], (tuple)): # for AutoModels like BERT
+                raw_encoding['x'] = torch.mean(raw_encoding["x"][-1], dim=1)
+
             encoding2pooler_properties = self.pooler(**raw_encoding)
             if len(encoding2pooler_properties) > 1:
                 raise ValueError(
