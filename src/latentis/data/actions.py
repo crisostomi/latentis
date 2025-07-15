@@ -13,6 +13,24 @@ class LoadHFDataset:
         self.load_params = load_params
 
     def __call__(self) -> DatasetDict:
+        path = self.load_params.get("path")
+        name = self.load_params.get("name")
+
+        if path == "BeIR/nq" and name == "corpus":
+            corpus = datasets.load_dataset(path, name="corpus")["corpus"]
+            queries = datasets.load_dataset(path, name="queries")["queries"]
+            return datasets.DatasetDict({
+                "train": queries,
+                "test": corpus,
+            })
+        elif path == "cardiffnlp/tweet_topic_multi":
+            train = datasets.load_dataset("cardiffnlp/tweet_topic_multi", split="train_all")
+            test = datasets.load_dataset("cardiffnlp/tweet_topic_multi", split="test_2021")
+            return datasets.DatasetDict({
+                "train": train,
+                "test": test,
+            })
+
         return datasets.load_dataset(**self.load_params)
 
 
