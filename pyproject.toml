@@ -165,7 +165,8 @@ dependencies = [
     "datasets>=2.14.4",
     "huggingface-hub>=0.33.1",
     "fsspec==2023.9.2",
-    "numpy<2"
+    "numpy<2",
+    "sentence-transformers"
 ]
 
 dynamic = ["version"]
