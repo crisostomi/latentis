@@ -275,12 +275,10 @@ TweetTopic = DataProcessor(
     flows=(
         Flow(outputs=["dataset_view"])
         .add(block="load_dataset", outputs="data")
-        .add(block="subset", inputs="data", outputs="data")
         .add(block="to_view", inputs="data", outputs="dataset_view")
     ),
     blocks={
-        "load_dataset": actions.LoadHFDataset(path="cardiffnlp/tweet_topic_multi", split="train_all"),
-        "subset": actions.Subset(perc=1, seed=42),
+        "load_dataset": actions.LoadHFDataset(path="cardiffnlp/tweet_topic_multilingual", name="en"),
         "to_view": actions.ToHFView(
             name="tweet-topic",
             id_column="sample_id",
