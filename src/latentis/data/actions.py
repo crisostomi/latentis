@@ -1,7 +1,7 @@
 from typing import Optional, Sequence
 
 import datasets
-from datasets import ClassLabel, DatasetDict
+from datasets import ClassLabel, DatasetDict, Dataset
 
 from latentis.data.dataset import DatasetView, Feature, FeatureMapping, HFDatasetView
 from latentis.data.imagenet import read_imagenet_labels
@@ -17,19 +17,16 @@ class LoadHFDataset:
         name = self.load_params.get("name")
 
         if path == "BeIR/nq" and name == "corpus":
-            corpus = datasets.load_dataset(path, name="corpus")["corpus"]
-            queries = datasets.load_dataset(path, name="queries")["queries"]
-            return datasets.DatasetDict({
-                "train": queries,
-                "test": corpus,
-            })
-        elif path == "cardiffnlp/tweet_topic_multi":
-            train = datasets.load_dataset("cardiffnlp/tweet_topic_multi", split="train_all")
-            test = datasets.load_dataset("cardiffnlp/tweet_topic_multi", split="test_2021")
-            return datasets.DatasetDict({
-                "train": train,
-                "test": test,
-            })
+                corpus = datasets.load_dataset(path=path, name=name)["corpus"]
+                corpus_dict = corpus.train_test_split(test_size=65536, seed=42)
+                train = corpus_dict["train"]
+                val   = corpus_dict["test"]
+                train = train.shuffle(seed=10).select(range(2_000_000))
+
+                return DatasetDict({
+                    "train": train,
+                    "test":  val
+                })
 
         return datasets.load_dataset(**self.load_params)
 
