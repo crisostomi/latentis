@@ -173,10 +173,15 @@ class ImageHFEncoder(HFEncoder):
         self.processor = AutoImageProcessor.from_pretrained(self.hf_name)
 
         self.is_clip: bool = "clip" in self.hf_name
+        self.is_resnet: bool = "resnet" or "convext" in self.hf_name.lower()
 
         self._output_dim = (
             self.model.config.vision_config.projection_dim
             if self.is_clip
+            else
+            self.model.config.hidden_sizes[-1] if self.is_resnet # taking 2048
+            else 
+            self.model.config.num_features if  self.is_vgg
             else self.model.config.hidden_size
         )
 
@@ -195,8 +200,12 @@ class ImageHFEncoder(HFEncoder):
     @torch.no_grad()
     def encode(self, x: BatchEncoding):
         x = x["proc_out"]
-        if not self.is_clip:
+        if not self.is_clip and not self.is_resnet and not self.is_vgg:
             outputs = self.model(**x)
             return {"x": outputs.last_hidden_state[:, 0, :]}
+        elif self.is_resnet:
+            out = self.model(**x, return_dict=True)
+            pooled = getattr(out, "pooler_output", None)
+            return {"x": pooled.squeeze(-1).squeeze(-1)}
         else:
             return {"x": self.model.get_image_features(**x)}
