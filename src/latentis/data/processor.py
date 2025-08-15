@@ -556,6 +556,32 @@ PokemonBLIPImage = DataProcessor(
     },
 )
 
+CardiffNLP = DataProcessor(
+    dataset_name="cardiff_nlp",
+    name="process_cardiff_nlp",
+    flows=(
+        Flow(outputs=["dataset_view"])
+        .add(block="load_dataset", outputs="data")
+        .add(block="cast_label", inputs="data", outputs="data")
+        .add(block="to_view", inputs="data", outputs="dataset_view")
+    ),
+    blocks={
+        "load_dataset": actions.LoadHFDataset(path="cardiffnlp/tweet_sentiment_multilingual", name="all"),
+        "cast_label": actions.ClassLabelCast(column_name="label"),
+        "to_view": actions.ToHFView(
+            name="cardiff_nlp",
+            id_column="sample_id",
+            features=[
+                Feature(
+                    name="text",
+                    data_type=DataType.TEXT,
+                ),
+                Feature(name="label", data_type=DataType.LABEL),
+            ],
+        ),
+    },
+)
+
 
 if __name__ == "__main__":
     data: DatasetView = IMDB.build().run()["dataset_view"]
