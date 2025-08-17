@@ -583,6 +583,45 @@ CardiffNLP = DataProcessor(
 )
 
 
+def make_wikimatrix_processor(lang_pair: str) -> DataProcessor:
+    """
+    Minimal processor for SEACrowd/wikimatrix.
+    Exposes: pair_id, src_text, tgt_text (plus src_lang/tgt_lang if you want).
+    """
+    bits = lang_pair.split("_")
+    src_lang, tgt_lang = bits[1], bits[2]
+    pair_text = f"{src_lang}_{tgt_lang}"
+
+    return DataProcessor(
+        dataset_name=f"wikimatrix_{pair_text}",
+        name=f"process_wikimatrix_{pair_text}",
+        flows=(
+            Flow(outputs=["dataset_view"])
+            .add(block="load_dataset", outputs="data")
+            .add(block="to_view", inputs="data", outputs="dataset_view")
+        ),
+        blocks={
+            # Loads the specific language-pair split
+            "load_dataset": actions.LoadHFDataset(
+                path="SEACrowd/wikimatrix",
+                name=lang_pair,
+                # trust_remote_code=True,
+            ),
+            # Final view
+            "to_view": actions.ToHFView(
+                name=f"wikimatrix_{pair_text}",
+                id_column="id",
+                features=[
+                    Feature("text_1", data_type=DataType.TEXT),
+                    Feature("text_2", data_type=DataType.TEXT),
+                    Feature("text_1_name", data_type=DataType.TEXT),
+                    Feature("text_2_name", data_type=DataType.TEXT),
+                ],
+            ),
+        },
+    )
+
+
 if __name__ == "__main__":
     data: DatasetView = IMDB.build().run()["dataset_view"]
     data.save_to_disk(
