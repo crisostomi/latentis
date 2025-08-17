@@ -76,6 +76,7 @@ class TextHFEncoder(HFEncoder):
             # SentenceTransformer fallback: use tokenizer's declared max length
             max_length = getattr(self.tokenizer, "model_max_length", 512)
 
+        self.trans_variable_lang = kwargs.pop("trans_variable_lang", None)
 
         self.pre_encode_kwargs = {
             "truncation": truncation,
@@ -110,7 +111,20 @@ class TextHFEncoder(HFEncoder):
 
     @torch.no_grad()
     def pre_encode(self, samples: Sequence, feature: str) -> BatchEncoding:
-        texts = [sample[feature] for sample in samples]
+        if self.trans_variable_lang is not None:
+            # Specific handling for the ted_multi dataset
+            texts = []
+            for sample in samples:
+                lang_idx = None
+                for idx, lang in enumerate(sample[feature]["language"]):
+                    if lang == self.trans_variable_lang:
+                        lang_idx = idx
+                if lang_idx is None:
+                    print(f"Language {self.trans_variable_lang} not found in sample {sample}")
+                texts.append(sample[feature]["translation"][lang_idx])
+
+        else:
+            texts = [sample[feature] for sample in samples]
 
         if self.uses_sentence_transformer:
             return BatchEncoding(dict(raw_text=texts))

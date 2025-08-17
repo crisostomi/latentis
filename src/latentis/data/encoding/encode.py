@@ -230,7 +230,8 @@ class EncodeTask(Task):
             shuffle=False,
             num_workers=self.num_workers,
             collate_fn=functools.partial(
-                self.collate_fn, model=model, feature=self.feature.name
+                self.collate_fn, model=model, feature=self.feature.name,
+                id_column=self.dataset.id_column
             ),
         )
 
