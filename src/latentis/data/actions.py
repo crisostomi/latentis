@@ -2,11 +2,22 @@ from typing import Optional, Sequence
 
 import datasets
 from datasets import ClassLabel, DatasetDict, Dataset
+from datasets import Features, Value, Image
 
 from latentis.data.dataset import DatasetView, Feature, FeatureMapping, HFDatasetView
 from latentis.data.imagenet import read_imagenet_labels
 import os
+import glob
 
+class LoadLocalDataset:
+    def __init__(self, loader, path):
+        self.loader = loader
+        self.path = path
+
+    def __call__(self, **kwargs):
+        if not callable(self.loader):
+            raise ValueError("loader must be a callable returning a Dataset or DatasetDict")
+        return self.loader(self.path)
 
 class LoadHFDataset:
     def __init__(self, **load_params) -> None:
@@ -156,6 +167,28 @@ class FeatureCast:
     def __call__(self, data: DatasetDict) -> DatasetDict:
         return data.cast_column(data, self.feature_name, self.feature)
 
+class MarketClassLabelCast:
+    def __init__(self, column_name: str) -> None:
+        self.column_name: str = column_name
+
+    def __call__(self, data: DatasetDict) -> DatasetDict:
+        # get labels from all splits
+        all_labels = sorted(set(
+            label
+            for split in data.values()
+            for label in split[self.column_name]
+        ))
+
+        class_label = ClassLabel(
+            num_classes=len(all_labels),
+            names=list(map(str, all_labels)),
+        )
+
+        # cast for every split
+        for split in data.keys():
+            data[split] = data[split].cast_column(self.column_name, class_label)
+
+        return data
 
 class ClassLabelCast:
     def __init__(self, column_name: str) -> None:
@@ -253,3 +286,54 @@ def imagenet_process(
     )
 
     return data
+
+def load_market1501(path):
+    def parse_filename(fname):
+        basename = os.path.basename(fname)
+        pid_str = basename.split("_")[0]
+        pid = int(pid_str)
+        camid_str = basename.split("_")[1]
+        camid = int(camid_str[1])
+        return pid, camid
+
+    def load_split(folder, split_name):
+        records = []
+        for img_path in glob.glob(os.path.join(path, folder, "*.jpg")):
+            pid, camid = parse_filename(img_path)
+            if pid == -1:
+                continue  # skip junk
+            records.append({
+                "image": img_path,
+                "pid_original": pid,
+                "pid": str(pid),
+                "camid": str(camid),
+                "split": split_name
+            })
+        return records
+
+    train_records   = load_split("bounding_box_train", "train")
+    query_records   = load_split("query", "query")
+    gallery_records = load_split("bounding_box_test", "gallery")
+
+    all_records = train_records + query_records + gallery_records
+    all_pids = sorted(set(r["pid"] for r in all_records))
+    pid_map = {pid: str(i) for i, pid in enumerate(all_pids)}
+
+    for r in all_records:
+        r["pid"] = pid_map[r["pid"]]
+
+    def to_dataset(records):
+        features = Features({
+            "image": Image(),
+            "pid": Value("string"),
+            "pid_original": Value("int32"),
+            "camid": Value("string"),
+            "split": Value("string"),
+        })
+        return Dataset.from_list(records, features=features)
+
+    return DatasetDict({
+        "train":   to_dataset([r for r in all_records if r["split"] == "train"]),
+        "query":   to_dataset([r for r in all_records if r["split"] == "query"]),
+        "gallery": to_dataset([r for r in all_records if r["split"] == "gallery"]),
+    })

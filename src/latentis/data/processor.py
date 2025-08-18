@@ -478,6 +478,42 @@ GaussianBlobs = DataProcessor(
     },
 )
 
+def build_market1501_processor(dataset_path: str):
+    return DataProcessor(
+        dataset_name="market1501",
+        name="process_market1501",
+        flows=(
+            Flow(outputs=["dataset_view"])
+            .add(block="load_dataset", outputs="data")
+            .add(block="map_feature_names", inputs="data", outputs="data")
+            .add(block="cast_label", inputs="data", outputs="data")
+            .add(block="to_view", inputs="data", outputs="dataset_view")
+        ),
+        blocks={
+            "load_dataset": actions.LoadLocalDataset(
+                loader=actions.load_market1501,
+                path=f"{dataset_path}",
+            ),
+            "map_feature_names": actions.MapFeatures(
+                FeatureMapping(source_col="image", target_col="x"),
+                FeatureMapping(source_col="pid", target_col="y"),
+            ),
+            "cast_label": actions.MarketClassLabelCast(column_name="y"),
+            "to_view": actions.ToHFView(
+                name="market1501",
+                id_column="sample_id",
+                features=[
+                    Feature(name="x", data_type=DataType.IMAGE),
+                    Feature(name="y", data_type=DataType.LABEL),
+                    Feature(name="pid_original", data_type=DataType.LONG),
+                    Feature(name="camid", data_type=DataType.TEXT),
+                    Feature(name="split", data_type=DataType.TEXT),
+                ],
+            ),
+        },
+    )
+
+
 if __name__ == "__main__":
     data: DatasetView = IMDB.build().run()["dataset_view"]
     data.save_to_disk(
