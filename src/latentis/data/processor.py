@@ -14,13 +14,13 @@ from latentis.data.dataset import (
 )
 from latentis.data.imagenet import get_template_dataset
 from latentis.pipeline.flow import Flow, Pipeline
+from latentis.data.actions import generate_gaussian_blob_dataset
 
 pylogger = logging.getLogger(__name__)
 
 
 _RANDOM_SEED: int = 42
 _ID_COLUMN: str = "sample_id"
-
 
 class BuildDatasetTask(Task):
     def __init__(self, pipeline: Pipeline) -> None:
@@ -244,59 +244,6 @@ IMDB = DataProcessor(
     },
 )
 
-NaturalQuestions = DataProcessor(
-    dataset_name="nq",
-    name="process_nq",
-    flows=(
-        Flow(outputs=["dataset_view"])
-        .add(block="load_dataset", outputs="data")
-        .add(block="to_view", inputs="data", outputs="dataset_view")
-    ),
-    blocks={
-        "load_dataset": actions.LoadHFDataset(path="BeIR/nq", name="corpus"),
-        "subset": actions.Subset(perc=1, seed=42),
-        "to_view": actions.ToHFView(
-            name="nq-corpus",
-            id_column="sample_id",
-            features=[
-                Feature(
-                    name="text",
-                    data_type=DataType.TEXT,
-                    properties={FeatureProperty.LANGUAGE: "en"},
-                ),
-            ],
-        ),
-    },
-)
-
-TweetTopic = DataProcessor(
-    dataset_name="tweet_topic",
-    name="process_tweettopic",
-    flows=(
-        Flow(outputs=["dataset_view"])
-        .add(block="load_dataset", outputs="data")
-        .add(block="to_view", inputs="data", outputs="dataset_view")
-    ),
-    blocks={
-        "load_dataset": actions.LoadHFDataset(path="cardiffnlp/tweet_topic_multilingual", name="en"),
-        "to_view": actions.ToHFView(
-            name="tweet-topic",
-            id_column="sample_id",
-            features=[
-                Feature(
-                    name="text",
-                    data_type=DataType.TEXT,
-                    properties={FeatureProperty.LANGUAGE: "en"},
-                ),
-                Feature(
-                    name="label",
-                    data_type=DataType.LABEL,
-                ),
-            ],
-        ),
-    },
-)
-
 # dataset = dataset.cast_column(
 #             "label",
 #             ClassLabel(
@@ -485,7 +432,7 @@ ImageNet = DataProcessor(
 )
 
 ImageNetText = DataProcessor(
-    dataset_name="imagenet_text",
+    dataset_name="imagene_text",
     name="process_imagenet_text",
     flows=(
         Flow(outputs=["dataset_view", "data"])
@@ -511,116 +458,25 @@ ImageNetText = DataProcessor(
     },
 )
 
-
-PokemonBLIPText = DataProcessor(
-    dataset_name="pokemon_blip_captions_text",
-    name="process_pokemon_blip_captions_text",
-    flows=(
-        Flow(outputs=["dataset_view", "data"])
-        .add(block="load_dataset", outputs="data")
-        .add(block="to_view", inputs="data", outputs="dataset_view")
-    ),
-    blocks={
-        "load_dataset": actions.LoadHFDataset(path="reach-vb/pokemon-blip-captions"),
-        "to_view": actions.ToHFView(
-            name="pokemon_blip_view_text",
-            id_column="sample_id",  # assuming or generating unique ID
-            features=[
-                Feature(
-                    name="text",
-                    data_type=DataType.TEXT,
-                    properties={FeatureProperty.LANGUAGE: "en"}
-                ),
-            ],
-        ),
-    },
-)
-
-PokemonBLIPImage = DataProcessor(
-    dataset_name="pokemon_blip_captions_image",
-    name="process_pokemon_blip_captions_image",
-    flows=(
-        Flow(outputs=["dataset_view", "data"])
-        .add(block="load_dataset", outputs="data")
-        .add(block="to_view", inputs="data", outputs="dataset_view")
-    ),
-    blocks={
-        "load_dataset": actions.LoadHFDataset(path="reach-vb/pokemon-blip-captions"),
-        "to_view": actions.ToHFView(
-            name="pokemon_blip_view_image",
-            id_column="sample_id",  # assuming or generating unique ID
-            features=[
-                Feature(name="image", data_type=DataType.IMAGE),
-            ],
-        ),
-    },
-)
-
-CardiffNLP = DataProcessor(
-    dataset_name="cardiff_nlp",
-    name="process_cardiff_nlp",
+GaussianBlobs = DataProcessor(
+    dataset_name="gaussian_blobs",
+    name="process_gaussian_blobs",
     flows=(
         Flow(outputs=["dataset_view"])
         .add(block="load_dataset", outputs="data")
-        .add(block="cast_label", inputs="data", outputs="data")
         .add(block="to_view", inputs="data", outputs="dataset_view")
     ),
     blocks={
-        "load_dataset": actions.LoadHFDataset(path="cardiffnlp/tweet_sentiment_multilingual", name="all"),
-        "cast_label": actions.ClassLabelCast(column_name="label"),
+        "load_dataset": generate_gaussian_blob_dataset,
         "to_view": actions.ToHFView(
-            name="cardiff_nlp",
+            name="gaussian_blobs",
             id_column="sample_id",
             features=[
-                Feature(
-                    name="text",
-                    data_type=DataType.TEXT,
-                ),
-                Feature(name="label", data_type=DataType.LABEL),
+                Feature(name="x", data_type=DataType.IMAGE),
             ],
         ),
     },
 )
-
-
-def make_wikimatrix_processor(lang_pair: str) -> DataProcessor:
-    """
-    Minimal processor for SEACrowd/wikimatrix.
-    Exposes: pair_id, src_text, tgt_text (plus src_lang/tgt_lang if you want).
-    """
-    bits = lang_pair.split("_")
-    src_lang, tgt_lang = bits[1], bits[2]
-    pair_text = f"{src_lang}_{tgt_lang}"
-
-    return DataProcessor(
-        dataset_name=f"wikimatrix_{pair_text}",
-        name=f"process_wikimatrix_{pair_text}",
-        flows=(
-            Flow(outputs=["dataset_view"])
-            .add(block="load_dataset", outputs="data")
-            .add(block="to_view", inputs="data", outputs="dataset_view")
-        ),
-        blocks={
-            # Loads the specific language-pair split
-            "load_dataset": actions.LoadHFDataset(
-                path="SEACrowd/wikimatrix",
-                name=lang_pair,
-                # trust_remote_code=True,
-            ),
-            # Final view
-            "to_view": actions.ToHFView(
-                name=f"wikimatrix_{pair_text}",
-                id_column="id",
-                features=[
-                    Feature("text_1", data_type=DataType.TEXT),
-                    Feature("text_2", data_type=DataType.TEXT),
-                    Feature("text_1_name", data_type=DataType.TEXT),
-                    Feature("text_2_name", data_type=DataType.TEXT),
-                ],
-            ),
-        },
-    )
-
 
 if __name__ == "__main__":
     data: DatasetView = IMDB.build().run()["dataset_view"]
