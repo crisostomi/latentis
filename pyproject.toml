@@ -167,6 +167,7 @@ dependencies = [
     "fsspec==2023.9.2",
     "numpy<2",
     "sentence-transformers",
+    "torchaudio>=2.8.0",
 ]
 
 dynamic = ["version"]
