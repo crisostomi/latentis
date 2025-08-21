@@ -7,12 +7,15 @@ from transformers import (
     AutoTokenizer,
     BatchEncoding,
     PreTrainedModel,
+    AutoFeatureExtractor,
+    ClapModel,
+    ClapProcessor
 )
 
 from latentis.nn._base import WrappedModule
 from latentis.types import Metadata
 from sentence_transformers import SentenceTransformer
-
+import torchaudio
 
 class HFEncoder(WrappedModule):
     def __init__(
@@ -163,8 +166,7 @@ class TextHFEncoder(HFEncoder):
             del tok_out["token_type_ids"]
 
         if self.hf_name.startswith("openai/clip"):
-            # TODO: check this
-            encodings = self.model.text_model(**tok_out, return_dict=True).pooler_output
+            encodings = self.model.get_text_features(**tok_out)
         elif self.hf_name.startswith(("t5", "sentence-transformers/gtr")):
             # T5-style models
             encoder_output = self.model.encoder(**tok_out, return_dict=True).last_hidden_state
@@ -221,3 +223,86 @@ class ImageHFEncoder(HFEncoder):
             return {"x": pooled.squeeze(-1).squeeze(-1)}
         else:
             return {"x": self.model.get_image_features(**x)}
+
+class AudioHFEncoder(HFEncoder):
+    def __init__(
+            self, 
+            hf_name: str, 
+            requires_grad: bool = False, 
+            metadata: Optional[Metadata] =None
+        ):
+        super().__init__(hf_name, requires_grad, metadata=metadata)
+        self.hf_name = hf_name
+        self.is_clap = "clap" in hf_name.lower()
+
+        if self.is_clap:
+            self.processor = ClapProcessor.from_pretrained(hf_name)
+            self.model = ClapModel.from_pretrained(hf_name, trust_remote_code=True)
+            # self.sampling_rate = 48000 # hardcoded for now
+            self.sampling_rate = self.processor.feature_extractor.sampling_rate
+        else:
+            self.processor = AutoFeatureExtractor.from_pretrained(hf_name)
+            self.model = AutoModel.from_pretrained(hf_name)
+            self.sampling_rate = getattr(self.processor, "sampling_rate", 16000)
+
+        # Detect output dim
+        if self.is_clap:
+            # self._output_dim = self.model.config.audio_config.hidden_size
+            self._output_dim = self.model.config.projection_dim
+            # dummy = torch.zeros(1, self.sampling_rate)
+            # proc = self.processor(audios=dummy.numpy(),
+            #                       sampling_rate=self.sampling_rate,
+            #                       return_tensors="pt")
+            # with torch.no_grad():
+            #     out = self.model.get_audio_features(**proc)
+            # self._output_dim = out.shape[-1]
+        else:
+            if hasattr(self.model.config, "hidden_size"):
+                self._output_dim = self.model.config.hidden_size
+            else:
+                dummy = torch.zeros(1, int(self.sampling_rate))  # 1s of silence
+                with torch.no_grad():
+                    out = self.model(self.processor(dummy, sampling_rate=self.sampling_rate, return_tensors="pt"))
+                self._output_dim = out.last_hidden_state.shape[-1]
+
+    @property
+    def output_dim(self):
+        return self._output_dim
+
+    @torch.no_grad()
+    def pre_encode(self, samples, feature: str):
+        audios = []
+        for sample in samples:
+            path = sample[feature]
+            waveform, sr = torchaudio.load(path) # expects path of audio files
+            if sr != self.sampling_rate:
+                waveform = torchaudio.functional.resample(waveform, orig_freq=sr, new_freq=self.sampling_rate) # resample if sampling rate of input is different
+            audios.append(waveform.squeeze(0).numpy())
+
+        if "clap" in self.hf_name.lower():
+            # specify audios param
+            proc_out = self.processor(
+                audios=audios,
+                sampling_rate=self.sampling_rate,
+                return_tensors="pt",
+                padding=True,
+            )
+        else:
+            proc_out = self.processor(
+                audios,
+                sampling_rate=self.sampling_rate,
+                return_tensors="pt",
+                padding=True,
+            )
+
+        return {"proc_out": proc_out}
+
+    @torch.no_grad()
+    def encode(self, x):
+        if "clap" in self.hf_name.lower():
+            outputs = self.model.get_audio_features(**x["proc_out"])
+            return {"x": outputs}
+        else:
+            outputs = self.model(**x["proc_out"])
+            return {"x": outputs.last_hidden_state.mean(dim=1)}
+            
