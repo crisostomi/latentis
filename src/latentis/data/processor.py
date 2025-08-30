@@ -14,7 +14,7 @@ from latentis.data.dataset import (
 )
 from latentis.data.imagenet import get_template_dataset
 from latentis.pipeline.flow import Flow, Pipeline
-from latentis.data.actions import generate_gaussian_blob_dataset
+# from latentis.data.actions import generate_gaussian_blob_dataset
 
 pylogger = logging.getLogger(__name__)
 
@@ -458,25 +458,25 @@ ImageNetText = DataProcessor(
     },
 )
 
-GaussianBlobs = DataProcessor(
-    dataset_name="gaussian_blobs",
-    name="process_gaussian_blobs",
-    flows=(
-        Flow(outputs=["dataset_view"])
-        .add(block="load_dataset", outputs="data")
-        .add(block="to_view", inputs="data", outputs="dataset_view")
-    ),
-    blocks={
-        "load_dataset": generate_gaussian_blob_dataset,
-        "to_view": actions.ToHFView(
-            name="gaussian_blobs",
-            id_column="sample_id",
-            features=[
-                Feature(name="x", data_type=DataType.IMAGE),
-            ],
-        ),
-    },
-)
+# GaussianBlobs = DataProcessor(
+#     dataset_name="gaussian_blobs",
+#     name="process_gaussian_blobs",
+#     flows=(
+#         Flow(outputs=["dataset_view"])
+#         .add(block="load_dataset", outputs="data")
+#         .add(block="to_view", inputs="data", outputs="dataset_view")
+#     ),
+#     blocks={
+#         "load_dataset": generate_gaussian_blob_dataset,
+#         "to_view": actions.ToHFView(
+#             name="gaussian_blobs",
+#             id_column="sample_id",
+#             features=[
+#                 Feature(name="x", data_type=DataType.IMAGE),
+#             ],
+#         ),
+#     },
+# )
 
 def build_market1501_processor(dataset_path: str):
     return DataProcessor(
