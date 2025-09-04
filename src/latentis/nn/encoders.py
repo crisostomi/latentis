@@ -188,14 +188,16 @@ class ImageHFEncoder(HFEncoder):
         super().__init__(hf_name, requires_grad, metadata=metadata)
         self.processor = AutoImageProcessor.from_pretrained(self.hf_name)
 
-        self.is_clip: bool = "clip" in self.hf_name
+        self.is_clip: bool = "clip" in self.hf_name.lower()
         self.is_resnet: bool = "resnet" in self.hf_name.lower() or "convnext" in self.hf_name.lower()
+        self.is_mobilenet = "mobilenet" in self.hf_name.lower()
 
         self._output_dim = (
             self.model.config.vision_config.projection_dim
             if self.is_clip
             else
             self.model.config.hidden_sizes[-1] if self.is_resnet # taking 2048
+            else self.model(torch.zeros(1, 3, 224, 224)).pooler_output.shape[-1] if self.is_mobilenet
             else self.model.config.hidden_size
         )
 
@@ -214,13 +216,16 @@ class ImageHFEncoder(HFEncoder):
     @torch.no_grad()
     def encode(self, x: BatchEncoding):
         x = x["proc_out"]
-        if not self.is_clip and not self.is_resnet:
+        if not self.is_clip and not self.is_resnet and not self.is_mobilenet:
             outputs = self.model(**x)
             return {"x": outputs.last_hidden_state[:, 0, :]}
         elif self.is_resnet:
             out = self.model(**x, return_dict=True)
-            pooled = getattr(out, "pooler_output", None)
+            pooled = out.pooler_output
             return {"x": pooled.squeeze(-1).squeeze(-1)}
+        elif self.is_mobilenet:
+            out = self.model(**x, return_dict=True)
+            return {"x": out.pooler_output}
         else:
             return {"x": self.model.get_image_features(**x)}
 
@@ -277,6 +282,7 @@ class AudioHFEncoder(HFEncoder):
             waveform, sr = torchaudio.load(path) # expects path of audio files
             if sr != self.sampling_rate:
                 waveform = torchaudio.functional.resample(waveform, orig_freq=sr, new_freq=self.sampling_rate) # resample if sampling rate of input is different
+            assert waveform.shape[0] == 1, f"Expected mono audio, got {waveform.shape[0]} channels"
             audios.append(waveform.squeeze(0).numpy())
 
         if "clap" in self.hf_name.lower():
@@ -285,14 +291,16 @@ class AudioHFEncoder(HFEncoder):
                 audios=audios,
                 sampling_rate=self.sampling_rate,
                 return_tensors="pt",
-                padding=True,
+                padding=False,
+                truncation=False,
             )
         else:
             proc_out = self.processor(
                 audios,
                 sampling_rate=self.sampling_rate,
                 return_tensors="pt",
-                padding=True,
+                padding=False,
+                truncation=False,
             )
 
         return {"proc_out": proc_out}
