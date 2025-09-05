@@ -177,12 +177,6 @@ class EncodeTask(Task):
             "pooler": self.pooler.__class__.__name__,
         }
 
-    def _mean_pool(self, hidden_state, attention_mask):
-        mask = attention_mask.unsqueeze(-1).expand(hidden_state.size())
-        sum_embeddings = torch.sum(hidden_state * mask, dim=1)
-        sum_mask = mask.sum(dim=1)
-        return sum_embeddings / sum_mask.clamp(min=1e-9)
-
     def _run(
         self,
     ) -> Space:
@@ -241,11 +235,6 @@ class EncodeTask(Task):
             total=len(loader),
         ):
             raw_encoding = model.encode(batch.to(self.device))
-
-            if isinstance(raw_encoding['x'], (tuple)): # for AutoModels like BERT
-                hidden_state = raw_encoding['x'][-1]
-                attention_mask = raw_encoding['attention_mask']
-                raw_encoding['x'] = self._mean_pool(hidden_state, attention_mask)
 
             encoding2pooler_properties = self.pooler(**raw_encoding)
             if len(encoding2pooler_properties) > 1:
