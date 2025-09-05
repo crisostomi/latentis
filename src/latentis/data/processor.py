@@ -513,6 +513,63 @@ def build_market1501_processor(dataset_path: str):
         },
     )
 
+# add back
+NaturalQuestions = DataProcessor(
+    dataset_name="nq",
+    name="process_nq",
+    flows=(
+        Flow(outputs=["dataset_view"])
+        .add(block="load_dataset", outputs="data")
+        .add(block="to_view", inputs="data", outputs="dataset_view")
+    ),
+    blocks={
+        "load_dataset": actions.LoadHFDataset(path="BeIR/nq", name="corpus"),
+        "subset": actions.Subset(perc=1, seed=42),
+        "to_view": actions.ToHFView(
+            name="nq-corpus",
+            id_column="sample_id",
+            features=[
+                Feature(
+                    name="text",
+                    data_type=DataType.TEXT,
+                    properties={FeatureProperty.LANGUAGE: "en"},
+                ),
+            ],
+        ),
+    },
+)
+
+TweetTopic = DataProcessor(
+    dataset_name="tweet_topic",
+    name="process_tweettopic",
+    flows=(
+        Flow(outputs=["dataset_view"])
+        .add(block="load_dataset", outputs="data")
+        .add(block="subset", inputs="data", outputs="data")
+        .add(block="to_view", inputs="data", outputs="dataset_view")
+    ),
+    blocks={
+        "load_dataset": actions.LoadHFDataset(path="cardiffnlp/tweet_topic_multi", split="train_all"),
+        "subset": actions.Subset(perc=1, seed=42),
+        "load_dataset": actions.LoadHFDataset(path="cardiffnlp/tweet_topic_multilingual", name="en"),
+        "to_view": actions.ToHFView(
+            name="tweet-topic",
+            id_column="sample_id",
+            features=[
+                Feature(
+                    name="text",
+                    data_type=DataType.TEXT,
+                    properties={FeatureProperty.LANGUAGE: "en"},
+                ),
+                Feature(
+                    name="label",
+                    data_type=DataType.LABEL,
+                ),
+            ],
+        ),
+    },
+)
+
 
 if __name__ == "__main__":
     data: DatasetView = IMDB.build().run()["dataset_view"]
