@@ -26,7 +26,7 @@ class HFEncoder(WrappedModule):
         decode_fn: Optional[str] = None,
         metadata: Optional[Metadata] = None,
     ):
-        if hf_name in ["sentence-transformers/clip-ViT-B-32"]:
+        if hf_name.lower().startswith("sentence-transformers") or hf_name in ["infgrad/stella-base-en-v2", "thenlper/gte-base", "intfloat/e5-base-v2", "ibm-granite/granite-embedding-278m-multilingual"]:
             hf_model = SentenceTransformer(hf_name)
             # For compatibility
             hf_model.eval()
@@ -66,7 +66,7 @@ class TextHFEncoder(HFEncoder):
         super().__init__(
             hf_name, requires_grad, encode_fn=None, decode_fn=None, metadata=metadata
         )
-        if hf_name in ["sentence-transformers/clip-ViT-B-32"]: # currently fixing this
+        if hf_name.lower().startswith("sentence-transformers") or hf_name in ["infgrad/stella-base-en-v2", "thenlper/gte-base", "intfloat/e5-base-v2", "ibm-granite/granite-embedding-278m-multilingual"]: # limits the scope but works for now
             self.tokenizer = self.model.tokenizer
             self.uses_sentence_transformer = True
         else:
@@ -76,8 +76,7 @@ class TextHFEncoder(HFEncoder):
         if hasattr(self.model, "config"):
             max_length = max_length or self.model.config.max_length
         else:
-            # SentenceTransformer fallback: use tokenizer's declared max length
-            max_length = getattr(self.tokenizer, "model_max_length", 512)
+            max_length = self.tokenizer.model_max_length
 
         self.trans_variable_lang = kwargs.pop("trans_variable_lang", None)
 
@@ -88,7 +87,7 @@ class TextHFEncoder(HFEncoder):
             **kwargs,
         }
 
-        self.is_clip: bool = "clip" in self.hf_name
+        self.is_clip: bool = "clip" in self.hf_name.lower() and not self.uses_sentence_transformer
 
         if hasattr(self.model, "config"):
             self._output_dim = (
@@ -143,39 +142,52 @@ class TextHFEncoder(HFEncoder):
         return BatchEncoding(dict(tok_out=tok_out))
     
     def _mean_pool(self, hidden_state, attention_mask):
-        mask = attention_mask.unsqueeze(-1).expand(hidden_state.size())
+        if hidden_state.ndim != 3:
+            raise ValueError(f"hidden_state must be (B,L,D); got {tuple(hidden_state.shape)}")
+        if attention_mask.ndim != 2:
+            raise ValueError(f"attention_mask must be (B,L); got {tuple(attention_mask.shape)}")
+        if hidden_state.shape[:2] != attention_mask.shape:
+            raise ValueError(
+                f"shape mismatch: hidden_state[:2]={hidden_state.shape[:2]} "
+                f"vs attention_mask={attention_mask.shape}"
+            )
+        mask = attention_mask.unsqueeze(-1).to(hidden_state.dtype)
         sum_embeddings = torch.sum(hidden_state * mask, dim=1)
         sum_mask = mask.sum(dim=1)
+        if torch.any(sum_mask == 0):
+            raise ValueError("mean-pool received an all-zero mask for at least one example")
         return sum_embeddings / sum_mask.clamp(min=1e-9)
 
     def encode(self, x: BatchEncoding):
         if self.uses_sentence_transformer:
             texts = x["raw_text"]
-            embeddings = torch.tensor(self.model.encode(texts, convert_to_tensor=True))
-            return {"x": embeddings, "mask": torch.ones(embeddings.size(0), dtype=torch.bool)}
+            encodings = self.model.encode(texts, convert_to_tensor=True)
+            return {"x": encodings}
         
         tok_out = x["tok_out"]
 
+        # this is not used later as the mean pooling includes special tokens
         mask = (
             tok_out["attention_mask"]
             * tok_out["special_tokens_mask"].bool().logical_not()
         )
         del tok_out["special_tokens_mask"]
 
-        if "token_type_ids" in tok_out and self.hf_name.__contains__(("t5")):
+        if "token_type_ids" in tok_out and self.hf_name.lower().__contains__(("t5")):
             del tok_out["token_type_ids"]
 
-        if self.hf_name.startswith("openai/clip"):
+        if self.is_clip:
             encodings = self.model.get_text_features(**tok_out)
-        elif self.hf_name.startswith(("t5", "sentence-transformers/gtr")):
+        elif self.hf_name.lower().startswith(("t5")):
             # T5-style models
             encoder_output = self.model.encoder(**tok_out, return_dict=True).last_hidden_state
-            attention_mask = tok_out["attention_mask"]
-            encodings = self._mean_pool(encoder_output, attention_mask)
+            encodings = self._mean_pool(encoder_output, tok_out["attention_mask"])
         else:
-            encodings = self.model(**tok_out)["hidden_states"]
+            encodings = self.model(**tok_out, return_dict=True)["hidden_states"]
+            hidden_state = encodings[-1]
+            encodings = self._mean_pool(hidden_state, tok_out["attention_mask"])
 
-        return {"x": encodings, "mask": mask, "attention_mask": tok_out["attention_mask"]}
+        return {"x": encodings}
 
 
 class ImageHFEncoder(HFEncoder):
