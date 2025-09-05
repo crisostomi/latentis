@@ -9,7 +9,8 @@ from transformers import (
     PreTrainedModel,
     AutoFeatureExtractor,
     ClapModel,
-    ClapProcessor
+    ClapProcessor,
+    CLIPProcessor,
 )
 
 from latentis.nn._base import WrappedModule
@@ -76,7 +77,10 @@ class TextHFEncoder(HFEncoder):
         if hasattr(self.model, "config"):
             max_length = max_length or self.model.config.max_length
         else:
-            max_length = self.tokenizer.model_max_length
+            if isinstance(self.tokenizer, CLIPProcessor): # ST-CLIP case
+                max_length = self.tokenizer.tokenizer.model_max_length
+            else:
+                max_length = self.tokenizer.model_max_length
 
         self.trans_variable_lang = kwargs.pop("trans_variable_lang", None)
 
@@ -88,6 +92,9 @@ class TextHFEncoder(HFEncoder):
         }
 
         self.is_clip: bool = "clip" in self.hf_name.lower() and not self.uses_sentence_transformer
+
+        if "clip" in self.hf_name.lower() and self.uses_sentence_transformer:
+            self.model.max_seq_length = max_length # for st clip
 
         if hasattr(self.model, "config"):
             self._output_dim = (
